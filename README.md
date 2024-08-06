@@ -1,2 +1,6 @@
 # ObjectDetection_with_Server
-Yolovx detection model with python flask server : from now : testing sequence
+Opencv
+Yolov8
+RCNN
+LSTM
+detection model with python flask server : from now : testing sequence
