@@ -1,0 +1,63 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HumanDetection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>HumanDetection {{ current_date }}</h1>
+        </header>
+        
+        <main>
+            <div class="video-container">
+                <video id="video" width="640" height="480" autoplay></video>
+            </div>
+            <div class="results">
+                <div class="ankerbox">
+                    <h2>Detection Results</h2>
+                    <p>Precision Score: <span id="precision"></span></p>
+                    <p>Box Count: <span id="box_count"></span></p>
+                    <p>Measurement: <span id="measurement"></span></p>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <button id="start">Start Detection</button>
+            <button id="stop">Stop Detection</button>
+        </footer>
+    </div>
+
+    <script>
+        // JavaScript to handle video streaming and controls
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const video = document.getElementById('video');
+            const precision = document.getElementById('precision');
+            const boxCount = document.getElementById('box_count');
+            const measurement = document.getElementById('measurement');
+
+            // Access webcam stream
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                })
+                .catch(err => {
+                    console.error("Error accessing webcam: " + err);
+                });
+
+            // Start and Stop Detection Buttons
+            document.getElementById('start').addEventListener('click', () => {
+                // Code to start detection
+            });
+
+            document.getElementById('stop').addEventListener('click', () => {
+                // Code to stop detection
+            });
+        });
+    </script>
+</body>
+</html>
