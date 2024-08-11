@@ -20,6 +20,17 @@ print(HOME)
 #download_assets(VideoAssets.VEHICLES)
 !pip install -q gdown
 %cd {HOME}
+
+# Change this link to the actual Google Drive link for the VisDrone dataset
+visdrone_dataset = "https://drive.google.com/file/d/1NSNapZQHar22OYzQYuXCugA3QlMndzvw/view?usp=sharing"
+
+# Download the dataset
+!gdown {visdrone_dataset} -O VisDrone2019-DET-train.zip
+
+# Unzip the dataset if it's a zip file
+!unzip -q VisDrone2019-DET-train.zip -d ./visdrone_data
+
+#target video
 !gdown '1pz68D1Gsx80MoPg-_q-IbEdESEmyVLm-'
 SOURCE_VIDEO_PATH = f"{HOME}/Day2024_Tokyo_Shinjuku_20240810_162047.mp4"
 
