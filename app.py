@@ -36,4 +36,8 @@ def upload_file():
         "prediction": prediction.tolist()
     }
 
+<<<<<<< Updated upstream
     return render_template('result.html', result=result)
+=======
+    return render_template('result.html', result=result)
+>>>>>>> Stashed changes
