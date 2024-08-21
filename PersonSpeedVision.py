@@ -1,7 +1,3 @@
-# Basic setup commands
-#nvidia-smi
-#pip install -q supervision ultralytics gdown
-
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -36,8 +32,11 @@ byte_track = sv.ByteTrack(
 # Initialize data structures to store past positions for speed estimation
 past_positions = defaultdict(lambda: deque(maxlen=5))
 
-# Assumed conversion factor from pixels to meters (this depends on the camera setup)
-pixel_to_meter = 0.05  # 1 pixel = 0.05 meters (adjust based on your video)
+# Placeholder for the conversion factor
+pixel_to_meter = None
+
+# Known average walking speed (6 km/h in meters per second)
+average_walking_speed_mps = 6 * 1000 / 3600  # 6 km/h = 1.67 meters/second
 
 # Process the video
 while cap.isOpened():
@@ -78,6 +77,15 @@ while cap.isOpened():
                     x_start, y_start = past_positions[track_id][0]
                     x_end, y_end = past_positions[track_id][-1]
                     distance_pixels = np.sqrt((x_end - x_start) ** 2 + (y_end - y_start) ** 2)
+
+                    # Calculate the conversion factor only once
+                    if pixel_to_meter is None:
+                        # Estimate pixel speed in pixels/second
+                        median_speed_pixels_per_sec = distance_pixels / (len(past_positions[track_id]) / fps)
+                        # Calculate the pixel_to_meter conversion factor
+                        pixel_to_meter = average_walking_speed_mps / median_speed_pixels_per_sec
+
+                    # Convert pixel distance to meters
                     distance_meters = distance_pixels * pixel_to_meter
 
                     # Calculate speed in meters per second (m/s)
