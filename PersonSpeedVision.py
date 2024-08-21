@@ -1,137 +1,125 @@
 # Basic setup commands
-!nvidia-smi
-!pip install -q supervision ultralytics gdown
+#nvidia-smi
+#pip install -q supervision ultralytics gdown
 
 import cv2
-import os
 import numpy as np
-import supervision as sv
-from tqdm import tqdm
 from ultralytics import YOLO
+import supervision as sv
 from collections import defaultdict, deque
-
-# Get current working directory
-HOME = os.getcwd()
-print(HOME)
-
-# Download the VisDrone dataset
-visdrone_dataset = "https://drive.google.com/uc?id=1NSNapZQHar22OYzQYuXCugA3QlMndzvw"
-!gdown {visdrone_dataset} -O VisDrone2019-DET-train.zip
-
-# Unzip the dataset if it's a zip file
-!unzip -q VisDrone2019-DET-train.zip -d ./visdrone_data
-
-# Download the target video
-!gdown '1pz68D1Gsx80MoPg-_q-IbEdESEmyVLm-'
-SOURCE_VIDEO_PATH = f"{HOME}/Day2024_Tokyo_Shinjuku_20240810_162047.mp4"
-
-# Define constants and file paths
-TARGET_VIDEO_PATH = "Day2024_Tokyo_Shinjuku_20240810_162047-result.mp4"
-CONFIDENCE_THRESHOLD = 0.3
-IOU_THRESHOLD = 0.5
-MODEL_NAME = "yolov8S.pt"
-MODEL_RESOLUTION = 1280
-
-# Define source and target points for perspective transformation
-SOURCE = np.array([
-    [1252, 787],
-    [2298, 803],
-    [5039, 2159],
-    [-550, 2159]
-])
-
-TARGET_WIDTH = 25
-TARGET_HEIGHT = 250
-
-TARGET = np.array([
-    [0, 0],
-    [TARGET_WIDTH - 1, 0],
-    [TARGET_WIDTH - 1, TARGET_HEIGHT - 1],
-    [0, TARGET_HEIGHT - 1],
-])
-
-# Initialize video processing
-frame_generator = sv.get_video_frames_generator(source_path=SOURCE_VIDEO_PATH)
-frame_iterator = iter(frame_generator)
-frame = next(frame_iterator)
-
-annotated_frame = frame.copy()
-annotated_frame = sv.draw_polygon(scene=annotated_frame, polygon=SOURCE, color=sv.Color.red(), thickness=4)
-sv.plot_image(annotated_frame)
-
-# Define the ViewTransformer class
-class ViewTransformer:
-    def __init__(self, source: np.ndarray, target: np.ndarray) -> None:
-        source = source.astype(np.float32)
-        target = target.astype(np.float32)
-        self.m = cv2.getPerspectiveTransform(source, target)
-
-    def transform_points(self, points: np.ndarray) -> np.ndarray:
-        if points.size == 0:
-            return points
-
-        reshaped_points = points.reshape(-1, 1, 2).astype(np.float32)
-        transformed_points = cv2.perspectiveTransform(reshaped_points, self.m)
-        return transformed_points.reshape(-1, 2)
-
-# Instantiate the ViewTransformer
-view_transformer = ViewTransformer(source=SOURCE, target=TARGET)
+from google.colab.patches import cv2_imshow
 
 # Load the YOLO model
-model = YOLO(MODEL_NAME)
+model = YOLO("yolov8s.pt")  # Use the appropriate YOLOv8 model variant
 
-# Get video information
-video_info = sv.VideoInfo.from_video_path(video_path=SOURCE_VIDEO_PATH)
-frame_generator = sv.get_video_frames_generator(source_path=SOURCE_VIDEO_PATH)
+# Set up video paths
+SOURCE_VIDEO_PATH = "/content/drive/MyDrive/Team7dataset/Team7Shared/140sNightShinjuku.mp4"
+TARGET_VIDEO_PATH = "/content/drive/MyDrive/Team7dataset/Team7Shared/140sNightShinjuku_yolov8_result.mp4"
 
-# Initialize tracking and annotators
-byte_track = sv.ByteTrack(frame_rate=video_info.fps, track_thresh=CONFIDENCE_THRESHOLD)
-thickness = sv.calculate_dynamic_line_thickness(resolution_wh=video_info.resolution_wh)
-text_scale = sv.calculate_dynamic_text_scale(resolution_wh=video_info.resolution_wh)
+# Initialize video capture
+cap = cv2.VideoCapture(SOURCE_VIDEO_PATH)
 
-bounding_box_annotator = sv.BoundingBoxAnnotator(thickness=thickness)
-label_annotator = sv.LabelAnnotator(text_scale=text_scale, text_thickness=thickness, text_position=sv.Position.BOTTOM_CENTER)
-trace_annotator = sv.TraceAnnotator(thickness=thickness, trace_length=video_info.fps * 2, position=sv.Position.BOTTOM_CENTER)
+# Video properties
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = cap.get(cv2.CAP_PROP_FPS)
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+out = cv2.VideoWriter(TARGET_VIDEO_PATH, fourcc, fps, (width, height))
 
-polygon_zone = sv.PolygonZone(polygon=SOURCE, frame_resolution_wh=video_info.resolution_wh)
-coordinates = defaultdict(lambda: deque(maxlen=video_info.fps))
+# Initialize ByteTrack tracker
+byte_track = sv.ByteTrack(
+    track_activation_threshold=0.3,
+    lost_track_buffer=30,
+    frame_rate=fps
+)
 
-# Process the video and annotate frames
-with sv.VideoSink(TARGET_VIDEO_PATH, video_info) as sink:
-    for frame in tqdm(frame_generator, total=video_info.total_frames):
-        result = model(frame, imgsz=MODEL_RESOLUTION, verbose=False)[0]
-        detections = sv.Detections.from_ultralytics(result)
+# Initialize data structures to store past positions for speed estimation
+past_positions = defaultdict(lambda: deque(maxlen=5))
 
-        # Filter and refine detections
-        detections = detections[detections.confidence > CONFIDENCE_THRESHOLD]
-        detections = detections[detections.class_id != 0]
-        detections = detections[polygon_zone.trigger(detections)]
-        detections = detections.with_nms(IOU_THRESHOLD)
-        detections = byte_track.update_with_detections(detections=detections)
+# Assumed conversion factor from pixels to meters (this depends on the camera setup)
+pixel_to_meter = 0.05  # 1 pixel = 0.05 meters (adjust based on your video)
 
-        points = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
-        points = view_transformer.transform_points(points=points).astype(int)
+# Process the video
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-        # Store and calculate speed
-        for tracker_id, [_, y] in zip(detections.tracker_id, points):
-            coordinates[tracker_id].append(y)
+    # Run YOLO object detection
+    results = model(frame, conf=0.5)  # Adjust confidence threshold as needed
 
-        labels = []
-        for tracker_id in detections.tracker_id:
-            if len(coordinates[tracker_id]) < video_info.fps / 2:
-                labels.append(f"#{tracker_id}")
+    # Get detections
+    detections = sv.Detections.from_ultralytics(results[0])
+
+    # Filter detections by confidence
+    detections = detections[detections.confidence > 0.3]
+
+    # Update tracker with detections
+    tracks = byte_track.update_with_detections(detections)
+
+    # Annotate frame manually
+    for track in tracks:
+        track_id = track[0]
+        bbox = track[1]  # Get bounding box coordinates
+
+        if bbox is not None:
+            # Draw the bounding box
+            x1, y1, x2, y2 = map(int, bbox)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # Calculate speed estimation
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
+
+            if track_id in past_positions:
+                past_positions[track_id].append((center_x, center_y))
+                if len(past_positions[track_id]) > 1:
+                    # Calculate the displacement between the first and last positions
+                    x_start, y_start = past_positions[track_id][0]
+                    x_end, y_end = past_positions[track_id][-1]
+                    distance_pixels = np.sqrt((x_end - x_start) ** 2 + (y_end - y_start) ** 2)
+                    distance_meters = distance_pixels * pixel_to_meter
+
+                    # Calculate speed in meters per second (m/s)
+                    time_seconds = len(past_positions[track_id]) / fps
+                    speed_mps = distance_meters / time_seconds
+
+                    # Convert speed to km/h
+                    speed_kmph = speed_mps * 3.6
+
+                    # Categorize the speed
+                    if speed_kmph > 10:  # Adjust these thresholds based on your data
+                        speed_category = "High Speed"
+                        color = (0, 0, 255)  # Red for high speed
+                    elif 4 < speed_kmph <= 10:
+                        speed_category = "Mid Speed"
+                        color = (0, 255, 255)  # Yellow for mid speed
+                    else:
+                        speed_category = "Low Speed"
+                        color = (0, 255, 0)  # Green for low speed
+
+                    # Draw the speed category
+                    cv2.putText(frame, f'{speed_category} ({int(speed_kmph)} km/h)', (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
             else:
-                coordinate_start = coordinates[tracker_id][-1]
-                coordinate_end = coordinates[tracker_id][0]
-                distance = abs(coordinate_start - coordinate_end)
-                time = len(coordinates[tracker_id]) / video_info.fps
-                speed = distance / time * 3.6
-                labels.append(f"#{tracker_id} {int(speed)} km/h")
+                past_positions[track_id].append((center_x, center_y))
 
-        # Annotate and save the frame
-        annotated_frame = frame.copy()
-        annotated_frame = trace_annotator.annotate(scene=annotated_frame, detections=detections)
-        annotated_frame = bounding_box_annotator.annotate(scene=annotated_frame, detections=detections)
-        annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+            # Draw the track ID
+            cv2.putText(frame, f'ID: {track_id}', (x1, y1 - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-        sink.write_frame(annotated_frame)
+    # Write the annotated frame to the output video
+    out.write(frame)
+
+    # Display the frame (optional)
+    cv2_imshow(frame)  # Use cv2_imshow instead of cv2.imshow
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release resources
+cap.release()
+out.release()
+cv2.destroyAllWindows()
+
+# Save the results
+print(f"Results saved to {TARGET_VIDEO_PATH}")
