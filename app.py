@@ -1,43 +1,37 @@
-from flask import Flask, request, render_template, redirect, url_for
-import tensorflow as tf
-from PIL import Image
+from flask import Flask, request, jsonify
+from ultralytics import YOLO
+import cv2
 import numpy as np
-import io
-from datetime import datetime
 
 app = Flask(__name__)
 
-# Load your trained model
-model = tf.keras.models.load_model('path_to_your_model.h5')
+# Load your YOLOv8 model
+model = YOLO('path_to_your_yolov8_model.pt')
 
-@app.route('/')
-def index():
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    return render_template('index.html', current_date=current_date)
+@app.route('/detect', methods=['POST'])
+def detect():
+    # Get the image from the request
+    file = request.files['image'].read()
+    npimg = np.frombuffer(file, np.uint8)
+    img = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+    
+    # Run the model
+    results = model(img)
+    
+    # Process results
+    detections = []
+    for result in results.xyxy[0]:
+        x1, y1, x2, y2, conf, cls = result
+        detections.append({
+            "x1": int(x1),
+            "y1": int(y1),
+            "x2": int(x2),
+            "y2": int(y2),
+            "confidence": float(conf),
+            "class": int(cls)
+        })
+    
+    return jsonify(detections)
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return redirect(url_for('index'))
-
-    file = request.files['file']
-    if file.filename == '':
-        return redirect(url_for('index'))
-
-    # Read image and preprocess
-    image = Image.open(io.BytesIO(file.read()))
-    image = image.resize((224, 224))
-    image = np.array(image) / 255.0
-    image = np.expand_dims(image, axis=0)
-
-    # Run inference
-    prediction = model.predict(image)
-    result = {
-        "prediction": prediction.tolist()
-    }
-
-<<<<<<< Updated upstream
-    return render_template('result.html', result=result)
-=======
-    return render_template('result.html', result=result)
->>>>>>> Stashed changes
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
