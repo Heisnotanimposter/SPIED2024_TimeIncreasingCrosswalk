@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Light Control</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin: 20px;
+        }
+
+        .left-panel {
+            max-width: 40%;
+        }
+
+        .right-panel {
+            max-width: 55%;
+        }
+
+        .traffic-light { 
+            width: 50px; 
+            height: 150px; 
+            background: #333; 
+            margin: 20px auto; 
+            padding: 10px; 
+        }
+
+        .light { 
+            width: 50px; 
+            height: 50px; 
+            border-radius: 50%; 
+            margin: 10px 0; 
+        }
+
+        .red { background: red; }
+        .yellow { background: yellow; }
+        .green { background: green; }
+        .off { background: #555; }
+
+        video {
+            width: 100%;
+            height: auto;
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+<div class="left-panel">
+    <h1>Traffic Light Control</h1>
+    <div class="traffic-light">
+        <div id="Aphase" class="light off"></div>
+        <div id="Bphase" class="light off"></div>
+    </div>
+
+    <h2>Counts</h2>
+    <p>Vehicle Count Aphase: <span id="vehicle_count_a">0</span></p>
+    <p>Vehicle Count Bphase: <span id="vehicle_count_b">0</span></p>
+    <p>Person Count Aphase: <span id="person_count_a">0</span></p>
+    <p>Person Count Bphase: <span id="person_count_b">0</span></p>
+</div>
+
+<div class="right-panel">
+    <h2>YOLOv8x Output Video</h2>
+    <video controls autoplay loop>
+        <source src="/static/140sDayShinjuku.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+</div>
+
+<script>
+    function updateTrafficLight() {
+        fetch('/traffic_state')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('Aphase').className = 'light ' + (data.Aphase === 'green' ? 'green' : 'red');
+                document.getElementById('Bphase').className = 'light ' + (data.Bphase === 'green' ? 'green' : 'red');
+            });
+    }
+
+    function updateCounts() {
+        fetch('/counts')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('vehicle_count_a').innerText = data.vehicle_count.Aphase;
+                document.getElementById('vehicle_count_b').innerText = data.vehicle_count.Bphase;
+                document.getElementById('person_count_a').innerText = data.person_count.Aphase;
+                document.getElementById('person_count_b').innerText = data.person_count.Bphase;
+            });
+    }
+
+    setInterval(updateTrafficLight, 1000);
+    setInterval(updateCounts, 1000);
+</script>
+
+</body>
+</html>
