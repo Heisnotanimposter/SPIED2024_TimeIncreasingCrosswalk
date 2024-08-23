@@ -8,109 +8,95 @@ let currentLight = 0;
 let remainingTime;
 let timerInterval;
 
+// Dynamic timer adjustment based on traffic conditions
+function adjustTimers(vehicleCount, personCount, personSpeed) {
+    let baseGreenTime = 30;  // Base time for green light
+    let baseRedTime = 30;    // Base time for red light
+
+    // Adjust green light duration based on vehicle and person counts
+    if (vehicleCount > personCount) {
+        baseGreenTime -= Math.min(vehicleCount, 10);  // Reduce green time by up to 10 seconds
+    } else {
+        baseGreenTime += Math.min(personCount, 10);  // Increase green time by up to 10 seconds
+    }
+
+    // Adjust red light duration based on person speed
+    if (personSpeed > 6) {  // Assume 6 km/h is the average walking speed
+        baseRedTime -= Math.min(personSpeed - 6, 10);  // Reduce red time by up to 10 seconds
+    } else {
+        baseRedTime += Math.min(6 - personSpeed, 10);  // Increase red time by up to 10 seconds
+    }
+
+    greenTimeInput.value = baseGreenTime;
+    redTimeInput.value = baseRedTime;
+}
+
 function changeLight() {
     clearInterval(timerInterval); // Clear previous timer
 
-    // Turn off the previous light
-    lights.forEach(light => light.style.backgroundColor = '#111');
-    
-    // Turn on the current light
-    const currentClass = lights[currentLight].classList[1];
-    lights[currentLight].style.backgroundColor = currentClass;
+    lights[currentLight].classList.remove('red', 'green', 'yellow');
+    lights[currentLight].classList.add('off');
+    currentLight = (currentLight + 1) % lights.length;
+    lights[currentLight].classList.remove('off');
+    lights[currentLight].classList.add(lights[currentLight].classList[1]);
 
-    // Set remaining time based on the current light
-    if (currentClass === 'red') remainingTime = parseInt(redTimeInput.value) || 5;
-    else if (currentClass === 'yellow') remainingTime = parseInt(yellowTimeInput.value) || 2;
-    else remainingTime = parseInt(greenTimeInput.value) || 3;
+    // Get time from input or default value
+    if (currentLight === 0) remainingTime = parseInt(redTimeInput.value) || 30;
+    else if (currentLight === 1) remainingTime = parseInt(yellowTimeInput.value) || 3;
+    else remainingTime = parseInt(greenTimeInput.value) || 30;
 
-    // Update timer display
     timerDisplay.textContent = remainingTime;
 
-    // Start countdown
     timerInterval = setInterval(() => {
         remainingTime--;
         timerDisplay.textContent = remainingTime;
 
-        if (remainingTime <= 0) {
-            currentLight = (currentLight + 1) % lights.length; // Move to the next light
+        if (remainingTime === 0) {
             changeLight();
         }
     }, 1000);
 }
 
+function updateTrafficData() {
+    fetch('/counts')
+        .then(response => response.json())
+        .then(data => {
+            const vehicleCountA = data.vehicle_count.Aphase;
+            const personCountA = data.person_count.Aphase;
+            const personSpeedA = data.person_speed.Aphase || 6; // Default to 6 km/h if not available
+
+            adjustTimers(vehicleCountA, personCountA, personSpeedA);
+
+            document.getElementById('vehicle_count_a').innerText = vehicleCountA;
+            document.getElementById('vehicle_count_b').innerText = data.vehicle_count.Bphase;
+            document.getElementById('person_count_a').innerText = personCountA;
+            document.getElementById('person_count_b').innerText = data.person_count.Bphase;
+        });
+}
+
 changeLight(); // Start the sequence
 
-// Real-time updates for input fields
+// Update traffic data every second
+setInterval(updateTrafficData, 1000);
+
+// Add event listeners to inputs for real-time updates
 redTimeInput.addEventListener('input', () => {
-    if (lights[currentLight].classList.contains('red')) {
-        remainingTime = parseInt(redTimeInput.value) || 5;
+    if (currentLight === 0) {
+        remainingTime = parseInt(redTimeInput.value) || 30;
         timerDisplay.textContent = remainingTime;
     }
 });
 
 yellowTimeInput.addEventListener('input', () => {
-    if (lights[currentLight].classList.contains('yellow')) {
-        remainingTime = parseInt(yellowTimeInput.value) || 2;
+    if (currentLight === 1) {
+        remainingTime = parseInt(yellowTimeInput.value) || 3;
         timerDisplay.textContent = remainingTime;
     }
 });
 
 greenTimeInput.addEventListener('input', () => {
-    if (lights[currentLight].classList.contains('green')) {
-        remainingTime = parseInt(greenTimeInput.value) || 3;
+    if (currentLight === 2) {
+        remainingTime = parseInt(greenTimeInput.value) || 30;
         timerDisplay.textContent = remainingTime;
     }
 });
-
-// Function to fetch data from Google Drive
-async function fetchDataFromDrive(accessToken, fileId) {
-    try {
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-
-        const data = await response.json();
-
-        // Update input fields and trigger light change if necessary
-        redTimeInput.value = data.redTime;
-        yellowTimeInput.value = data.yellowTime;
-        greenTimeInput.value = data.greenTime;
-
-        // If a light is currently active, update its remaining time and display
-        if (lights[currentLight].classList.contains('red')) {
-            remainingTime = data.redTime;
-        } else if (lights[currentLight].classList.contains('yellow')) {
-            remainingTime = data.yellowTime;
-        } else {
-            remainingTime = data.greenTime;
-        }
-        timerDisplay.textContent = remainingTime;
-
-    } catch (error) {
-        console.error("Error fetching data from Google Drive:", error);
-    }
-}
-
-// Fetch data periodically
-const accessToken = 'your-access-token'; // Set your Google Drive access token here
-const fileId = 'your-file-id'; // Set your Google Drive file ID here
-setInterval(() => fetchDataFromDrive(accessToken, fileId), 5000);
-
-// Function to load the video
-function loadVideo() {
-    const videoElement = document.getElementById('trafficVideo');
-    videoElement.src = '/Users/seungwonlee/ObjectDetection_with_Server/target/140sDayShinjuku.mp4';
-    videoElement.play();
-}
-
-// Call this function once the page is fully loaded
-window.onload = () => {
-    loadVideo();
-};
-
