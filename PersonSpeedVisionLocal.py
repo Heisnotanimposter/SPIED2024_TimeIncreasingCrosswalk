@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, Response, jsonify, send_from_directory
 import cv2
 import numpy as np
@@ -8,7 +9,7 @@ import os
 app = Flask(__name__)
 
 # Load the YOLO model
-model = YOLO("yolov8x.pt")
+model = YOLO("yolov8s.pt")
 
 # Initialize counters and traffic light state
 vehicle_count = {'Aphase': 0, 'Bphase': 0}
